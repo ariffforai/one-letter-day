@@ -52,14 +52,25 @@ function main(): void {
   mkdirSync("/output", { recursive: true });
   writeFileSync(OUTPUT_PATH, ENTRY, "utf8");
 
-  // Read-back verification against the gate.
-  const written = readFileSync(OUTPUT_PATH, "utf8");
+  // Read-back verification against the gate, at the raw-byte level.
+  // The byte itself is checked directly (0x41-0x5A, uppercase ASCII
+  // A-Z), and the file is checked for a UTF-8 byte-order mark
+  // (EF BB BF). A BOM would be silently stripped by a text-mode read,
+  // so it is only visible in the raw bytes. Either failure is loud.
+  const raw = readFileSync(OUTPUT_PATH);
+  const hasBom =
+    raw.length >= 3 && raw[0] === 0xef && raw[1] === 0xbb && raw[2] === 0xbf;
+  const byteIsLetter =
+    raw.length === REQUIRED_CHARS && raw[0] >= 0x41 && raw[0] <= 0x5a;
+  const written = raw.toString("utf8");
   const chars = [...written].length;
-  const bytes = Buffer.byteLength(written, "utf8");
+  const bytes = raw.length;
   const isLetter = /^[A-Z]$/.test(written);
   const nonWhitespace = written.trim().length > 0;
   const roundTrip = written === ENTRY;
   const valid =
+    !hasBom &&
+    byteIsLetter &&
     chars === REQUIRED_CHARS &&
     isLetter &&
     nonWhitespace &&
@@ -68,13 +79,17 @@ function main(): void {
   console.log(`entry: ${written}`);
   console.log(`chars: ${chars}`);
   console.log(`bytes: ${bytes}`);
+  console.log(`byte A-Z (0x41-0x5A): ${byteIsLetter}`);
+  console.log(`BOM present: ${hasBom}`);
   console.log(`letter A-Z: ${isLetter}`);
   console.log(`non-whitespace: ${nonWhitespace}`);
   console.log(`round-trip exact: ${roundTrip}`);
   console.log(`valid: ${valid}`);
 
   if (!valid) {
-    throw new Error("entry failed gate verification");
+    throw new Error(
+      `entry failed gate verification: bytes=${bytes} byteIsLetter=${byteIsLetter} hasBom=${hasBom} chars=${chars} isLetter=${isLetter}`,
+    );
   }
 }
 
